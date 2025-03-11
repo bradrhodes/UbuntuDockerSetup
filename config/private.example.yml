@@ -31,6 +31,17 @@ github:
     # Personal access token with appropriate permissions
     # (Only needed if upload_key is true)
     access_token: "githubaccesstoken"
+    # Docker configuration repository
+    docker_repo:
+        # Repository URL in SSH format (e.g., git@github.com:username/repo.git)
+        url: "git@github.com:yourusername/docker-configs.git"
+        # Branch to clone (e.g., main, master, production)
+        branch: "main"
+        # Local directory where the repository will be cloned
+        # Can be absolute path or relative to user's home directory
+        directory: "/opt/docker-configs"
+        # Whether to automatically update the repository when the script runs
+        auto_update: true
 # Network mounts
 network_mounts:
   - type: nfs
