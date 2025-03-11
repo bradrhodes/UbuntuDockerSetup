@@ -1,0 +1,74 @@
+---
+# =================================================================
+# Linux Development Environment Private Configuration
+# =================================================================
+# This file contains sensitive configuration options and should be
+# encrypted with SOPS or Ansible Vault before being stored in Git.
+# =================================================================
+# ===== SENSITIVE CONFIGURATION =====
+# Git user configuration
+git_user:
+    name: "Your Name"
+    email: "your.email@example.com"
+    # Your GPG key ID for signing commits, if applicable
+    signing_key: ""
+# SSH configuration
+ssh:
+    # Set to true to create a new SSH key
+    generate_key: true
+    # Key type and strength
+    key_type: ed25519
+    # Email for the SSH key
+    key_email: "your.email@example.com"
+    # Optional passphrase for SSH key (leave empty for no passphrase)
+    key_passphrase: ""
+# GitHub configuration
+github:
+    # Your GitHub username
+    username: yourusername
+    # Whether to upload your SSH key to GitHub
+    upload_key: true
+    # Personal access token with appropriate permissions
+    # (Only needed if upload_key is true)
+    access_token: "githubaccesstoken"
+# Network mounts
+network_mounts:
+  - type: nfs
+    source: 192.168.1.10:/Media
+    target: /media
+    options:
+      - noauto
+      - nofail
+      - _netdev
+      - soft
+      - timeo=20
+      - retry=0
+      - x-systemd.automount
+      - x-systemd.idle-timeout=60
+      - rw
+    dump: 0
+    fsck: 0
+    permissions:
+      mode: "755"
+      owner: "yourusername"
+      group: "docker"
+
+  - type: nfs
+    source: 192.168.1.10:/Backup
+    target: /backup
+    options:
+      - noauto
+      - nofail
+      - _netdev
+      - soft
+      - timeo=20
+      - retry=0
+      - x-systemd.automount
+      - x-systemd.idle-timeout=60
+      - rw
+    dump: 0
+    fsck: 0
+    permissions:
+      mode: "755"
+      owner: "yourusername"
+      group: "docker"

@@ -1,0 +1,5 @@
+creation_rules:
+  # Encrypt with Age key
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      age172unqujv5uv885spfc8gk7ztru9y2lc3jgr20s3gpt9lzhtt8gusgzusdn

@@ -1,0 +1,21 @@
+---
+# =================================================================
+# Linux Development Environment Public Configuration
+# =================================================================
+# This file contains non-sensitive configuration options that can be
+# safely stored in a public repository.
+# =================================================================
+
+# User and environment settings
+# These are auto-detected but can be overridden here
+user: ""  # Leave empty to auto-detect (uses current user)
+home_dir: ""  # Leave empty to auto-detect (uses current user's home directory)
+log_level: "info"
+
+# TMUX configuration
+tmux_prefix: "C-a"  # TMUX prefix key (C-a = Ctrl+A)
+tmux_plugins:
+  - "tmux-plugins/tpm"
+  - "tmux-plugins/tmux-sensible"
+  - "tmux-plugins/tmux-resurrect"
+  - "tmux-plugins/tmux-continuum"
