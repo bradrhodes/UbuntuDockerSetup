@@ -1,0 +1,22 @@
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.backup.*
+/tmp/
+
+# SOPS-related temporary files
+*.decrypted~*
+.decrypted~*
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+.directory
+Desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-*
+*~
