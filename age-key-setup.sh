@@ -137,61 +137,57 @@ update_sops_config() {
     
     # Check if there's an existing age key
     if yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q -v "null"; then
+      # First, check if the key is already in the file regardless of format
+      if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
+        log_info "Public key already exists in SOPS config"
+        return 0
+      fi
+  
       # Handle different age format types
       if yq '.creation_rules[0].age | type' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q "string"; then
-        # Handle the block scalar (>-) format
-        # We need to create a temporary file and process it
+        log_info "Detected block scalar format in config"
+        
+        # Extract existing keys from the block scalar format
         TEMP_FILE=$(mktemp)
+        TEMP_KEYS=$(mktemp)
         
-        # Check if the public key is already in the config file directly
-        if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
-          log_info "Public key already exists in SOPS config"
-          # Clean up temporary file
-          rm -f "$TEMP_FILE"
-          return 0
-        fi
+        # Extract existing keys and format
+        yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" > "$TEMP_KEYS" || true
         
-        log_info "Adding key to existing config (block scalar format)"
+        # Add our key to the list (appending to maintain existing keys)
+        echo "$PUBLIC_KEY" >> "$TEMP_KEYS"
         
-        # Read the current file as a template
-        cp "$SOPS_CONFIG_FILE" "$TEMP_FILE.bak"
+        # Get path_regex from existing file or use default
+        path_regex=$(yq '.creation_rules[0].path_regex' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" || echo "config/private.*\.ya?ml$")
         
-        # Create a new file using basic text processing
-        # This avoids yq and complex processing - just look for the block scalar marker
+        # Create the new config file preserving the block scalar format
         {
-          # Flag to track when we're in the age block
-          in_age_block=0
+          echo "creation_rules:"
+          echo "  - path_regex: $path_regex"
+          echo "    age: >-"
           
-          # Read the file line by line
-          while IFS= read -r line; do
-            # Output the current line
-            echo "$line"
-            
-            # Check if this is the start of the age block
-            if [[ "$line" == *"age: >-"* ]]; then
-              in_age_block=1
-            elif [[ "$in_age_block" -eq 1 && "$line" != *"      "* ]]; then
-              # We've reached the end of the age block
-              # Add our key before exiting the block
-              echo "      $PUBLIC_KEY"
-              in_age_block=0
+          # Add all keys maintaining the indentation
+          while IFS= read -r key; do
+            # Skip empty lines
+            if [ -n "$key" ]; then
+              echo "      $key"
             fi
-          done < "$TEMP_FILE.bak"
-          
-          # If we reached the end of the file and are still in the age block,
-          # we need to add the key at the end
-          if [[ "$in_age_block" -eq 1 ]]; then
-            echo "      $PUBLIC_KEY"
-          fi
+          done < "$TEMP_KEYS"
         } > "$TEMP_FILE"
         
-        # Remove the backup file
-        rm -f "$TEMP_FILE.bak"
+        # Debug - show what we're writing
+        log_info "Writing new config with block scalar format:"
+        cat "$TEMP_FILE" | while read debug_line; do
+          log_info "  $debug_line"
+        done
+        
+        # Clean up temp files
+        rm -f "$TEMP_KEYS"
           
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
       else
-        # It's likely an array - check directly if our key is already in the file
+        # It's likely an array format - process accordingly
         if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
           log_info "Public key already exists in SOPS config (array format)"
           return 0
@@ -199,22 +195,34 @@ update_sops_config() {
         
         log_info "Adding key to existing config (array format)"
         
-        # Let's use a direct approach instead of complex pattern matching
         TEMP_FILE=$(mktemp)
+        TEMP_KEYS=$(mktemp)
         
-        # Get the raw contents of the current file
-        cat "$SOPS_CONFIG_FILE" > "$TEMP_FILE.orig"
+        # Extract existing keys from the age array
+        yq '.creation_rules[0].age[]' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" > "$TEMP_KEYS" || true
         
-        # Check the file format
-        file_contents=$(cat "$TEMP_FILE.orig")
+        # Add our key to the list
+        echo "$PUBLIC_KEY" >> "$TEMP_KEYS"
         
-        # Direct and specific method - this is more reliable
-        # Create a new YAML file with the key added
+        # Sort and remove duplicates
+        sort -u "$TEMP_KEYS" > "$TEMP_KEYS.sorted"
+        
+        # Get path_regex from existing file or use default
+        path_regex=$(yq '.creation_rules[0].path_regex' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" || echo "config/private.*\.ya?ml$")
+        
+        # Create the new config file with all keys
         {
           echo "creation_rules:"
-          echo "  - path_regex: config/private.*\.ya?ml$"
+          echo "  - path_regex: $path_regex"
           echo "    age:"
-          echo "      - \"$PUBLIC_KEY\""
+          
+          # Add all keys as array elements
+          while IFS= read -r key; do
+            # Skip empty lines
+            if [ -n "$key" ]; then
+              echo "      - \"$key\""
+            fi
+          done < "$TEMP_KEYS.sorted"
         } > "$TEMP_FILE"
         
         # Debug - show what we're writing
@@ -222,6 +230,9 @@ update_sops_config() {
         cat "$TEMP_FILE" | while read debug_line; do
           log_info "  $debug_line"
         done
+        
+        # Clean up temp files
+        rm -f "$TEMP_KEYS" "$TEMP_KEYS.sorted"
         
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
