@@ -42,6 +42,7 @@ This toolkit provides scripts to set up Ubuntu servers for running Docker contai
 ```
 /
 ├── bootstrap.sh         # Installs prerequisites 
+├── age-key-setup.sh     # Sets up Age encryption keys
 ├── manage-secrets.sh    # Manages encrypted configuration
 ├── server-setup.sh      # Main setup script (handles decryption)
 ├── README.md
@@ -75,26 +76,21 @@ chmod +x *.sh scripts/*.sh
 # 3. Run the bootstrap script to install prerequisites (including Age)
 ./bootstrap.sh
 
-# 4. Initialize your Age key (if you don't already have one)
-# On your workstation (not the server):
-age-keygen -o ~/.age/keys.txt
-chmod 600 ~/.age/keys.txt
+# 4. Set up your Age key and SOPS configuration
+./age-key-setup.sh init
 
-# 5. Create .sops.yaml with your public key
-# Get your public key:
-cat ~/.age/keys.txt | grep "public key"
-# Create config/.sops.yaml with:
-echo 'creation_rules:
-  - path_regex: config/private.*\.ya?ml$
-    age: >-
-      PUBLIC_KEY_HERE' > config/.sops.yaml
-
-# 6. Initialize your private configuration
+# 5. Initialize your private configuration
 ./manage-secrets.sh init
 
-# 7. Run the setup
+# 6. Run the setup
 ./server-setup.sh
 ```
+
+The `age-key-setup.sh` script will automatically:
+- Generate a new Age key pair in `~/.age/keys.txt`
+- Configure SOPS to use your Age public key by creating/updating `.sops.yaml`
+- Set up the necessary environment variable (`SOPS_AGE_KEY_FILE`)
+- Provide instructions for next steps
 
 ### Additional Server Setup (Using Existing Configuration)
 
@@ -111,20 +107,33 @@ chmod +x *.sh scripts/*.sh
 # 3. Run the bootstrap script to install prerequisites (including Age)
 ./bootstrap.sh
 
-# 4. Copy your existing Age key to the server
-# Make sure your $HOME/.age/keys.txt contains the private key
-# that corresponds to the public key in .sops.yaml
-mkdir -p ~/.age
-chmod 700 ~/.age
-# Copy the content of your Age key to keys.txt
-nano ~/.age/keys.txt
-chmod 600 ~/.age/keys.txt
+# 4. Export your Age key from your original machine
+# On your original machine:
+./age-key-setup.sh export
+# This creates age-key-export.txt - transfer this file securely to your new server
 
-# 5. Set the SOPS environment variable
-export SOPS_AGE_KEY_FILE=~/.age/keys.txt
+# 5. Import your Age key on the new server
+./age-key-setup.sh import age-key-export.txt
+# This will automatically configure SOPS and set up environment variables
 
 # 6. Run the setup directly
 ./server-setup.sh
+```
+
+Alternatively, if you prefer to manually copy your key:
+
+```bash
+# Create the Age directory
+mkdir -p ~/.age
+chmod 700 ~/.age
+
+# Copy your Age key content
+nano ~/.age/keys.txt  # paste your Age key here
+chmod 600 ~/.age/keys.txt
+
+# Run the Age key setup to configure SOPS with your existing key
+./age-key-setup.sh config
+./age-key-setup.sh env
 ```
 
 ## Setup Process
@@ -331,6 +340,42 @@ network_mounts:
 - Installs required tools (git, curl, unzip, sops, age, etc.)
 - Upgrades existing tools if they're already installed
 - Ensures the system is ready for the main setup script
+
+### age-key-setup.sh
+
+**Purpose:** Generates, manages, and configures Age encryption keys for use with SOPS.
+
+**Usage:**
+```bash
+./age-key-setup.sh [command]
+```
+
+**Commands:**
+- `init` - Initialize everything (generate + config + env)
+- `generate` - Generate a new Age key pair
+- `config` - Update SOPS config with existing key
+- `export` - Export key for use on another machine
+- `import FILE` - Import key from FILE
+- `env` - Setup environment variables
+- `help` - Show help message
+
+**Examples:**
+```bash
+# Generate a new key and configure SOPS (default action)
+./age-key-setup.sh
+
+# Export your key to share with another machine
+./age-key-setup.sh export
+
+# Import a key from another machine
+./age-key-setup.sh import age-key-export.txt
+
+# Update SOPS configuration
+./age-key-setup.sh config
+
+# Set up environment variables
+./age-key-setup.sh env
+```
 
 ### manage-secrets.sh
 
