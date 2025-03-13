@@ -69,20 +69,75 @@ setup_sudo() {
   return 0
 }
 
-# Install or upgrade a tool using apt-get
+# Install or upgrade a tool
 install_tool() {
   local tool=$1
   
   log_info "Installing or upgrading $tool..."
   
-  # Try package manager
-  if $SUDO $PKG_INSTALL $tool --only-upgrade; then
-    log_success "$tool installed or upgraded successfully via apt-get"
-    return 0
-  fi
-  
-  log_error "Failed to install or upgrade $tool"
-  return 1
+  # Special cases for tools not in standard repositories
+  case "$tool" in
+    "yq")
+      if ! check_cmd "yq"; then
+        log_info "Installing yq from GitHub releases..."
+        YQ_VERSION="v4.40.5"
+        $SUDO wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+        $SUDO chmod +x /usr/local/bin/yq
+        
+        if check_cmd "yq"; then
+          log_success "yq installed successfully from GitHub"
+          return 0
+        else
+          log_error "Failed to install yq from GitHub"
+          return 1
+        fi
+      else
+        log_success "yq is already installed"
+        return 0
+      fi
+      ;;
+      
+    "sops")
+      if ! check_cmd "sops"; then
+        log_info "Installing sops from GitHub releases..."
+        SOPS_VERSION="v3.8.1"
+        $SUDO wget -qO /usr/local/bin/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+        $SUDO chmod +x /usr/local/bin/sops
+        
+        if check_cmd "sops"; then
+          log_success "sops installed successfully from GitHub"
+          return 0
+        else
+          log_error "Failed to install sops from GitHub"
+          return 1
+        fi
+      else
+        log_success "sops is already installed"
+        return 0
+      fi
+      ;;
+      
+    *)
+      # Default case - use apt-get
+      # First check if package exists
+      if ! check_cmd "$tool"; then
+        # Try to install it
+        if $SUDO $PKG_INSTALL $tool; then
+          log_success "$tool installed successfully via apt-get"
+          return 0
+        fi
+      else
+        # Try to upgrade it
+        if $SUDO $PKG_INSTALL $tool --only-upgrade; then
+          log_success "$tool upgraded successfully via apt-get"
+          return 0
+        fi
+      fi
+      
+      log_error "Failed to install or upgrade $tool"
+      return 1
+      ;;
+  esac
 }
 
 # Main function to check and install prerequisites
