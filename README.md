@@ -69,16 +69,18 @@ This toolkit provides scripts to set up Ubuntu servers for running Docker contai
 git clone https://github.com/yourusername/UbuntuServerSetup.git
 cd UbuntuServerSetup
 
-# 2. Run the bootstrap script to install prerequisites (including Age)
-chmod +x bootstrap.sh
+# 2. Make all scripts executable
+chmod +x *.sh scripts/*.sh
+
+# 3. Run the bootstrap script to install prerequisites (including Age)
 ./bootstrap.sh
 
-# 3. Initialize your Age key (if you don't already have one)
+# 4. Initialize your Age key (if you don't already have one)
 # On your workstation (not the server):
 age-keygen -o ~/.age/keys.txt
 chmod 600 ~/.age/keys.txt
 
-# 4. Create .sops.yaml with your public key
+# 5. Create .sops.yaml with your public key
 # Get your public key:
 cat ~/.age/keys.txt | grep "public key"
 # Create config/.sops.yaml with:
@@ -87,12 +89,10 @@ echo 'creation_rules:
     age: >-
       PUBLIC_KEY_HERE' > config/.sops.yaml
 
-# 5. Initialize your private configuration
-chmod +x manage-secrets.sh
+# 6. Initialize your private configuration
 ./manage-secrets.sh init
 
-# 6. Run the setup
-chmod +x server-setup.sh
+# 7. Run the setup
 ./server-setup.sh
 ```
 
@@ -105,11 +105,13 @@ If you already have an encrypted `private.yml` in your repository:
 git clone https://github.com/yourusername/UbuntuServerSetup.git
 cd UbuntuServerSetup
 
-# 2. Run the bootstrap script to install prerequisites (including Age)
-chmod +x bootstrap.sh
+# 2. Make all scripts executable
+chmod +x *.sh scripts/*.sh
+
+# 3. Run the bootstrap script to install prerequisites (including Age)
 ./bootstrap.sh
 
-# 3. Copy your existing Age key to the server
+# 4. Copy your existing Age key to the server
 # Make sure your $HOME/.age/keys.txt contains the private key
 # that corresponds to the public key in .sops.yaml
 mkdir -p ~/.age
@@ -118,11 +120,10 @@ chmod 700 ~/.age
 nano ~/.age/keys.txt
 chmod 600 ~/.age/keys.txt
 
-# 4. Set the SOPS environment variable
+# 5. Set the SOPS environment variable
 export SOPS_AGE_KEY_FILE=~/.age/keys.txt
 
-# 5. Run the setup directly
-chmod +x server-setup.sh
+# 6. Run the setup directly
 ./server-setup.sh
 ```
 
@@ -215,6 +216,9 @@ AGE-SECRET-KEY-1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # Clone your repository
 git clone https://github.com/yourusername/UbuntuServerSetup.git
 cd UbuntuServerSetup
+
+# Make all scripts executable
+chmod +x *.sh scripts/*.sh
 
 # Run bootstrap to install prerequisites
 ./bootstrap.sh
