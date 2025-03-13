@@ -13,6 +13,9 @@ set -o pipefail  # Exit if any command in a pipe fails
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 source "$SCRIPT_DIR/scripts/logging.sh"
 
+# Save the root directory path
+ROOT_DIR="$SCRIPT_DIR"
+
 # Extend sudo timeout for the duration of the script
 extend_sudo_timeout() {
   # Check if sudo is available
@@ -54,7 +57,7 @@ fi
 log_section "Loading Configuration"
 log_info "Loading configuration with SOPS decryption..."
 
-if ! source "$SCRIPT_DIR/scripts/load-config.sh" --public "$PUBLIC_CONFIG" --private "$PRIVATE_CONFIG" --sops; then
+if ! PRESERVE_SCRIPT_DIR=true source "$SCRIPT_DIR/scripts/load-config.sh" --public "$PUBLIC_CONFIG" --private "$PRIVATE_CONFIG" --sops; then
   log_fatal "Failed to load configuration."
 fi
 
@@ -67,10 +70,10 @@ setup_server() {
   
   # Run the bootstrap script to ensure required tools are installed
   log_subsection "Running Bootstrap"
-  if [ -f "$SCRIPT_DIR/bootstrap.sh" ]; then
-    bash "$SCRIPT_DIR/bootstrap.sh"
+  if [ -f "$ROOT_DIR/bootstrap.sh" ]; then
+    bash "$ROOT_DIR/bootstrap.sh"
   else
-    log_fatal "Bootstrap script not found at $SCRIPT_DIR/bootstrap.sh"
+    log_fatal "Bootstrap script not found at $ROOT_DIR/bootstrap.sh"
   fi
   
   # Display information about the configuration

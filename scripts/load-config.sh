@@ -7,9 +7,20 @@
 # =================================================================
 
 # Source the logging module
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-ROOT_DIR="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
-source "$SCRIPT_DIR/logging.sh"
+if [ -z "$PRESERVE_SCRIPT_DIR" ] || [ "$PRESERVE_SCRIPT_DIR" != "true" ]; then
+  # Normal operation - set SCRIPT_DIR to this script's directory
+  SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+  ROOT_DIR="$( cd "$SCRIPT_DIR/.." &> /dev/null && pwd )"
+  source "$SCRIPT_DIR/logging.sh"
+else
+  # Preserve the existing SCRIPT_DIR from parent script
+  CONFIG_SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+  # If ROOT_DIR isn't set, derive it
+  if [ -z "$ROOT_DIR" ]; then
+    ROOT_DIR="$SCRIPT_DIR"
+  fi
+  source "$CONFIG_SCRIPT_DIR/logging.sh"
+fi
 
 # Default config file locations
 PUBLIC_CONFIG="$ROOT_DIR/config/public.yml"
