@@ -110,41 +110,126 @@ update_sops_config() {
         # We need to create a temporary file and process it
         TEMP_FILE=$(mktemp)
         
-        # Extract all the age recipients from the file 
-        recipients=$(yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE")
-        
-        # Check if the public key is already in the recipients
-        if echo "$recipients" | grep -q "$PUBLIC_KEY"; then
-          log_info "Public key already exists in SOPS config (within multi-line string)"
+        # Check if the public key is already in the config file directly
+        if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
+          log_info "Public key already exists in SOPS config"
           # Clean up temporary file
           rm -f "$TEMP_FILE"
           return 0
         fi
         
-        # Append the new key to the existing recipients, maintaining format
-        combined_recipients="${recipients}
-      ${PUBLIC_KEY}"
+        # Since yq has trouble with multi-line strings, use a more direct approach
+        # Extract the creation_rules section to preserve the structure
+        # We'll use sed to add the new key at the right position
         
-        # Update the config using yq
-        yq e ".creation_rules[0].age = \"${combined_recipients}\"" \
-          "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+        # Create a backup for safety
+        cp "$SOPS_CONFIG_FILE" "${SOPS_CONFIG_FILE}.working"
+        
+        # Add our key to the age section while preserving structure
+        # Find the age: >- line, and append our key after all indented lines that follow
+        awk -v key="$PUBLIC_KEY" '
+        /age: >-/ {
+          print $0;  # Print the age: >- line
+          inAge = 1;
+          next;
+        }
+        inAge && /^[[:space:]]*[^[:space:]]/ {
+          # First non-indented line after age section ends the section
+          inAge = 0;
+          # Add our key before this line
+          print "      " key;
+          print $0;
+          next;
+        }
+        inAge {
+          print $0;  # Print indented age key lines
+          next;
+        }
+        { print $0; }  # Print everything else
+        END {
+          # If we reach the end while still in age section, add our key
+          if (inAge) print "      " key;
+        }' "${SOPS_CONFIG_FILE}.working" > "$TEMP_FILE"
+        
+        # Remove the working file
+        rm -f "${SOPS_CONFIG_FILE}.working"
           
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
       else
-        # It's likely an array - add our key to it
+        # It's likely an array - check directly if our key is already in the file
+        if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
+          log_info "Public key already exists in SOPS config (array format)"
+          return 0
+        fi
+        
+        # Add the new key to the array - this should work fine for array format
         TEMP_FILE=$(mktemp)
-        # Add the new key to the array
-        yq e ".creation_rules[0].age += [\"$PUBLIC_KEY\"]" \
-          "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+        
+        # Try to add using yq, but in a more compatible way
+        cp "$SOPS_CONFIG_FILE" "${SOPS_CONFIG_FILE}.working"
+        
+        # Use awk to find the age array and add our key
+        awk -v key="$PUBLIC_KEY" '
+        # Inside an age array section
+        inArray && /\]/ {
+          # End of array found, add our key before closing bracket
+          sub(/\]/, "\"" key "\"]");
+          inArray = 0;
+          print;
+          next;
+        }
+        # Start of age array found
+        /age:.*\[/ {
+          inArray = 1;
+          # If it has an immediate closing bracket, add our key
+          if (/\]/) {
+            sub(/\]/, "\"" key "\"]");
+            inArray = 0;
+          }
+          print;
+          next;
+        }
+        # Default action for all other lines
+        { print; }
+        ' "${SOPS_CONFIG_FILE}.working" > "$TEMP_FILE"
+        
+        # Clean up
+        rm -f "${SOPS_CONFIG_FILE}.working"
+        
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
       fi
     else
       # No age field yet, add it
       TEMP_FILE=$(mktemp)
-      yq e ".creation_rules[0].age = \"$PUBLIC_KEY\"" \
-        "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+      
+      # Since this is a new field, we can create it directly without yq
+      # First check if there are creation_rules at all
+      if grep -q "creation_rules:" "$SOPS_CONFIG_FILE"; then
+        # There are creation rules, add age to the first one
+        awk -v key="$PUBLIC_KEY" '
+        /creation_rules:/ { inRules = 1; print; next; }
+        inRules && /^[[:space:]]*-/ { 
+          # First rule found
+          print;
+          print "    age: >-";
+          print "      " key;
+          inRules = 0;
+          next;
+        }
+        { print; }
+        ' "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+      else
+        # No creation rules, create from scratch
+        cat > "$TEMP_FILE" << EOF
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      $PUBLIC_KEY
+EOF
+      fi
+      
       # Replace the original file
       mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
     fi
