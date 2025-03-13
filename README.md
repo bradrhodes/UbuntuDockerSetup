@@ -86,8 +86,8 @@ chmod +x *.sh scripts/*.sh
 ./server-setup.sh
 ```
 
-The `age-key-setup.sh` script will automatically:
-- Generate a new Age key pair in `~/.age/keys.txt`
+The `age-key-setup.sh init` command will:
+- Generate a new Age key pair in `~/.config/sops/age/keys.txt`
 - Configure SOPS to use your Age public key by creating/updating `.sops.yaml`
 - Set up the necessary environment variable (`SOPS_AGE_KEY_FILE`)
 - Provide instructions for next steps
@@ -124,12 +124,12 @@ Alternatively, if you prefer to manually copy your key:
 
 ```bash
 # Create the Age directory
-mkdir -p ~/.age
-chmod 700 ~/.age
+mkdir -p ~/.config/sops/age
+chmod 700 ~/.config/sops/age
 
 # Copy your Age key content
-nano ~/.age/keys.txt  # paste your Age key here
-chmod 600 ~/.age/keys.txt
+nano ~/.config/sops/age/keys.txt  # paste your Age key here
+chmod 600 ~/.config/sops/age/keys.txt
 
 # Run the Age key setup to configure SOPS with your existing key
 ./age-key-setup.sh config
@@ -211,7 +211,7 @@ If you're setting up on a new server and already have an encrypted `private.yml`
 
 ### 1. Ensure You Have the Age Private Key
 
-You need to have the Age private key that corresponds to one of the public keys in `.sops.yaml`. This key is typically stored in `~/.age/keys.txt` and looks like:
+You need to have the Age private key that corresponds to one of the public keys in `.sops.yaml`. This key is typically stored in `~/.config/sops/age/keys.txt` and looks like:
 
 ```
 # created: yyyy-mm-ddThh:mm:ss-00:00
@@ -238,10 +238,10 @@ chmod +x *.sh scripts/*.sh
 Create the directory and file:
 
 ```bash
-mkdir -p ~/.age
-chmod 700 ~/.age
-nano ~/.age/keys.txt  # Paste your Age key here
-chmod 600 ~/.age/keys.txt
+mkdir -p ~/.config/sops/age
+chmod 700 ~/.config/sops/age
+nano ~/.config/sops/age/keys.txt  # Paste your Age key here
+chmod 600 ~/.config/sops/age/keys.txt
 ```
 
 ### 4. Run Setup
@@ -361,8 +361,11 @@ network_mounts:
 
 **Examples:**
 ```bash
-# Generate a new key and configure SOPS (default action)
+# Show help (default action)
 ./age-key-setup.sh
+
+# Generate a new key and configure SOPS
+./age-key-setup.sh init
 
 # Export your key to share with another machine
 ./age-key-setup.sh export
@@ -438,8 +441,8 @@ If you encounter issues:
    ```
 4. Verify your Age key is properly set up:
    ```bash
-   cat ~/.age/keys.txt
-   export SOPS_AGE_KEY_FILE=~/.age/keys.txt
+   cat ~/.config/sops/age/keys.txt
+   export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
    ```
 5. Validate your configuration:
    ```bash

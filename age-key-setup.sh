@@ -13,7 +13,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 source "$SCRIPT_DIR/scripts/logging.sh"
 
 # Use SOPS' standard key location
-AGE_KEY_FILE="$HOME/.age/keys.txt"
+AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 SOPS_CONFIG_FILE="$SCRIPT_DIR/config/.sops.yaml"
 
 # Check if age is installed
@@ -83,23 +83,154 @@ update_sops_config() {
     extract_public_key
   fi
   
+  # Check if this key is already added to avoid duplicates
+  if [ -f "$SOPS_CONFIG_FILE" ] && grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
+    log_info "Public key already exists in SOPS config"
+    return 0
+  fi
+  
   if [ -f "$SOPS_CONFIG_FILE" ]; then
     log_info "Updating existing SOPS config..."
     # Create backup of existing config
     cp "$SOPS_CONFIG_FILE" "$SOPS_CONFIG_FILE.bak"
     log_info "Backup created at $SOPS_CONFIG_FILE.bak"
-  else
-    log_info "Creating new SOPS config..."
-  fi
-  
-  # Create or update SOPS config
-  cat > "$SOPS_CONFIG_FILE" << EOF
+    
+    # Determine if a SOPS config already exists and analyze its format
+    if grep -q "age:" "$SOPS_CONFIG_FILE"; then
+      # Check for age key format - could be array or block scalar
+      if grep -q "age: \[" "$SOPS_CONFIG_FILE"; then
+        # Flow-style array format: age: [key1, key2]
+        log_info "Detected flow-style array format"
+        
+        # Extract the existing array content
+        ARRAY_CONTENT=$(grep -o "age: \[.*\]" "$SOPS_CONFIG_FILE" | sed 's/age: \[\(.*\)\]/\1/')
+        
+        # Prepare the new array content
+        if [ -z "$ARRAY_CONTENT" ]; then
+          # Empty array
+          NEW_ARRAY="age: [$PUBLIC_KEY]"
+        else
+          # Non-empty array, append the new key
+          NEW_ARRAY="age: [$ARRAY_CONTENT, $PUBLIC_KEY]"
+        fi
+        
+        # Replace the array line in the file
+        sed -i "s|age: \[.*\]|$NEW_ARRAY|" "$SOPS_CONFIG_FILE"
+        
+      elif grep -q "age: >-" "$SOPS_CONFIG_FILE"; then
+        # Block scalar format with >-
+        log_info "Detected block scalar format (>-)"
+        
+        # Use a temporary file for processing
+        TEMP_FILE=$(mktemp)
+        
+        # Process the file line by line
+        while IFS= read -r line; do
+          if [[ "$line" == *"age: >-"* ]]; then
+            # Found the age line, write it and the existing keys
+            echo "$line" >> "$TEMP_FILE"
+            # Copy existing indented keys
+            grep -A 100 "age: >-" "$SOPS_CONFIG_FILE" | tail -n +2 | while IFS= read -r key_line; do
+              # Break at the first non-indented line (end of block)
+              if [[ ! "$key_line" =~ ^[[:space:]] ]] && [[ -n "$key_line" ]]; then
+                echo "$key_line" >> "$TEMP_FILE"
+                break
+              else
+                echo "$key_line" >> "$TEMP_FILE"
+              fi
+            done
+            # Add the new key with appropriate indentation (assuming 6 spaces)
+            echo "      $PUBLIC_KEY" >> "$TEMP_FILE"
+          elif [[ "$processed_block" == "true" && ! "$line" =~ ^[[:space:]] ]]; then
+            # We've already processed the age block, and this is a new section
+            echo "$line" >> "$TEMP_FILE"
+            processed_block="false"
+          elif [[ "$processed_block" != "true" ]]; then
+            # Normal line outside the age block
+            echo "$line" >> "$TEMP_FILE"
+          fi
+        done < "$SOPS_CONFIG_FILE"
+        
+        # Replace original file with our modified version
+        mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
+        
+      else
+        # Some other format, or not found
+        log_info "Existing config found, but age key format not recognized. Creating new format."
+        
+        # Create a new config preserving everything else
+        TEMP_FILE=$(mktemp)
+        
+        # Extract the creation_rules block
+        CREATION_RULES=$(grep -n "creation_rules:" "$SOPS_CONFIG_FILE" | cut -d ':' -f1)
+        if [ -n "$CREATION_RULES" ]; then
+          # If creation_rules exists, add the age key to the first rule
+          awk -v public_key="$PUBLIC_KEY" '
+          /creation_rules:/ {
+            print $0
+            in_rules = 1
+            next
+          }
+          in_rules && /^  -/ {
+            print $0
+            # Add the age key after the first rule marker
+            print "    age: >-"
+            print "      " public_key
+            in_rules = 0
+            next
+          }
+          { print $0 }
+          ' "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+        else
+          # No creation_rules section, create a new one
+          cat "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
+          cat >> "$TEMP_FILE" << EOF
+
 creation_rules:
-  # Encrypt with Age key
   - path_regex: config/private.*\.ya?ml$
     age: >-
       $PUBLIC_KEY
 EOF
+        fi
+        
+        # Replace original file with our modified version
+        mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
+      fi
+    else
+      # No age key found, add a new creation_rules section
+      log_info "No age configuration found, creating new section"
+      
+      # Check if the file is empty
+      if [ ! -s "$SOPS_CONFIG_FILE" ]; then
+        # Empty file, create a new config
+        cat > "$SOPS_CONFIG_FILE" << EOF
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      $PUBLIC_KEY
+EOF
+      else
+        # Append to existing file
+        cat >> "$SOPS_CONFIG_FILE" << EOF
+
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      $PUBLIC_KEY
+EOF
+      fi
+    fi
+  else
+    log_info "Creating new SOPS config..."
+    
+    # Create new config with just the new key
+    cat > "$SOPS_CONFIG_FILE" << EOF
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      $PUBLIC_KEY
+EOF
+  fi
   
   log_success "SOPS config updated with Age public key"
   log_info "Configuration file: $SOPS_CONFIG_FILE"
@@ -246,7 +377,7 @@ show_help() {
   echo "  env          Setup environment variables"
   echo "  help         Show this help message"
   echo
-  echo "Without a command, runs the init command"
+  echo "Without a command, shows this help message"
 }
 
 # Main function
@@ -254,8 +385,8 @@ main() {
   check_age
   
   if [ $# -eq 0 ]; then
-    # Default: run init
-    init_all
+    # Default: show help
+    show_help
   else
     case "$1" in
       init)
