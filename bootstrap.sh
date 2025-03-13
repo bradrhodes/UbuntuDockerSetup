@@ -211,8 +211,29 @@ bootstrap() {
   fi
 }
 
+# Make all scripts executable
+make_scripts_executable() {
+  log_section "Making Scripts Executable"
+  log_info "Setting executable permissions on all shell scripts..."
+  
+  # Make all .sh files in the project directory executable
+  find "$SCRIPT_DIR" -name "*.sh" -exec $SUDO chmod +x {} \;
+  
+  log_success "All scripts are now executable"
+  
+  # Configure git to ignore filemode changes
+  if [ -d "$SCRIPT_DIR/.git" ]; then
+    log_info "Configuring git to ignore filemode changes..."
+    git -C "$SCRIPT_DIR" config --local core.fileMode false
+    log_success "Git configured to ignore filemode changes"
+  fi
+}
+
 # Run the bootstrap process
 if bootstrap; then
+  # Make scripts executable and configure git
+  make_scripts_executable
+  
   log_section "Next Steps"
   log_success "Bootstrap completed successfully!"
   log_info "You can now proceed with the server setup script:"
