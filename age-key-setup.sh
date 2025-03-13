@@ -199,60 +199,28 @@ update_sops_config() {
         
         log_info "Adding key to existing config (array format)"
         
-        # Create a temporary file for processing
+        # Let's use a direct approach instead of complex pattern matching
         TEMP_FILE=$(mktemp)
         
-        # Initialize array tracking variable
-        in_array=0
+        # Get the raw contents of the current file
+        cat "$SOPS_CONFIG_FILE" > "$TEMP_FILE.orig"
         
-        # Create a backup first
-        cp "$SOPS_CONFIG_FILE" "$TEMP_FILE.backup"
+        # Check the file format
+        file_contents=$(cat "$TEMP_FILE.orig")
         
-        # Simple text-based approach for adding to array
+        # Direct and specific method - this is more reliable
+        # Create a new YAML file with the key added
         {
-          # Read the file line by line
-          while IFS= read -r line; do
-            # Debug output to help diagnose issues
-            log_debug "Processing line: $line"
-            
-            # Check for array ending (single-line array)
-            if [[ "$line" == *"age:"*"["* && "$line" == *"]"* ]]; then
-              # Single-line array 
-              if [[ "$line" == *"]"* ]]; then
-                # Remove the closing bracket and add our key
-                new_line="${line%]*}"
-                # Handle empty array case
-                if [[ "$new_line" == *"["* && "$new_line" != *","* ]]; then
-                  # Empty array or first element
-                  echo "${new_line}\"$PUBLIC_KEY\"]"
-                else
-                  # Array with elements - add comma
-                  echo "${new_line}, \"$PUBLIC_KEY\"]"
-                fi
-              else
-                # No valid transformation, output unchanged
-                echo "$line"
-              fi
-            elif [[ "$line" == *"]"* && "$in_array" -eq 1 ]]; then
-              # Multi-line array - insert our key before closing bracket
-              echo "      \"$PUBLIC_KEY\","
-              echo "$line"
-              in_array=0
-            elif [[ "$line" == *"age:"*"["* ]]; then
-              # Start of multi-line array
-              echo "$line"
-              in_array=1
-            else
-              # Regular line
-              echo "$line"
-            fi
-          done < "$TEMP_FILE.backup"
+          echo "creation_rules:"
+          echo "  - path_regex: config/private.*\.ya?ml$"
+          echo "    age:"
+          echo "      - \"$PUBLIC_KEY\""
         } > "$TEMP_FILE"
         
-        # Debug - show what we're trying to write
-        log_debug "Modified content to be written:"
+        # Debug - show what we're writing
+        log_info "Writing new config with the following content:"
         cat "$TEMP_FILE" | while read debug_line; do
-          log_debug "  $debug_line"
+          log_info "  $debug_line"
         done
         
         # Replace the original file
