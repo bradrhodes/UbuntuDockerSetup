@@ -45,6 +45,7 @@ generate_key() {
       extract_public_key
       return 0
     fi
+    # If user confirmed, we'll continue and generate a new key below
   fi
   
   # Generate new key
@@ -101,9 +102,9 @@ update_sops_config() {
     log_info "Backup created at $SOPS_CONFIG_FILE.bak"
     
     # Check if there's an existing age key
-    if yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" | grep -q -v "null"; then
+    if yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q -v "null"; then
       # Handle different age format types
-      if yq '.creation_rules[0].age | type' "$SOPS_CONFIG_FILE" | grep -q "string"; then
+      if yq '.creation_rules[0].age | type' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q "string"; then
         # Handle the block scalar (>-) format
         # We need to create a temporary file and process it
         TEMP_FILE=$(mktemp)
@@ -112,8 +113,8 @@ update_sops_config() {
         recipients=$(yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" | grep -v "$PUBLIC_KEY")
         
         # Create a new config with all existing recipients plus our new key
-        yq eval '.creation_rules[0].age = env(recipients) + "\n      " + env(PUBLIC_KEY)' \
-          --env="recipients=$recipients" --env="PUBLIC_KEY=$PUBLIC_KEY" \
+        # Using environment variables directly with eval
+        yq e ".creation_rules[0].age = \"$recipients\n      $PUBLIC_KEY\"" \
           "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
           
         # Replace the original file
@@ -122,8 +123,7 @@ update_sops_config() {
         # It's likely an array - add our key to it
         TEMP_FILE=$(mktemp)
         # Add the new key to the array
-        yq eval '.creation_rules[0].age += [env(PUBLIC_KEY)]' \
-          --env="PUBLIC_KEY=$PUBLIC_KEY" \
+        yq e ".creation_rules[0].age += [\"$PUBLIC_KEY\"]" \
           "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
@@ -131,8 +131,7 @@ update_sops_config() {
     else
       # No age field yet, add it
       TEMP_FILE=$(mktemp)
-      yq eval '.creation_rules[0].age = env(PUBLIC_KEY)' \
-        --env="PUBLIC_KEY=$PUBLIC_KEY" \
+      yq e ".creation_rules[0].age = \"$PUBLIC_KEY\"" \
         "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
       # Replace the original file
       mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"

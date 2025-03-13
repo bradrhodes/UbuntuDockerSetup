@@ -12,6 +12,11 @@ user: ""  # Leave empty to auto-detect (uses current user)
 home_dir: ""  # Leave empty to auto-detect (uses current user's home directory)
 log_level: "info"
 
+# Tool versions for bootstrap
+tool_versions:
+  yq: "v4.40.5"
+  sops: "v3.8.1"
+
 # TMUX configuration
 tmux_prefix: "C-a"  # TMUX prefix key (C-a = Ctrl+A)
 tmux_plugins:

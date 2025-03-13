@@ -13,6 +13,9 @@ set -e  # Exit on error
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 source "$SCRIPT_DIR/scripts/logging.sh"
 
+# Define config file path
+PUBLIC_CONFIG="$SCRIPT_DIR/config/public.yml"
+
 # Required tools - these will be installed or upgraded
 REQUIRED_TOOLS=(
   "git"      # Version control
@@ -49,6 +52,26 @@ setup_package_manager() {
   fi
 }
 
+# Load tool versions from config file
+load_tool_versions() {
+  # Ensure yq is available for checking
+  if ! check_cmd yq && [ -f "/usr/local/bin/yq" ]; then
+    # If we've just downloaded yq but it's not in PATH yet
+    PATH="/usr/local/bin:$PATH"
+  fi
+  
+  if check_cmd yq && [ -f "$PUBLIC_CONFIG" ]; then
+    YQ_VERSION=$(yq e '.tool_versions.yq // "v4.40.5"' "$PUBLIC_CONFIG")
+    SOPS_VERSION=$(yq e '.tool_versions.sops // "v3.8.1"' "$PUBLIC_CONFIG")
+    log_debug "Loaded tool versions from config - yq: $YQ_VERSION, sops: $SOPS_VERSION"
+  else
+    # Fallback values if yq isn't available yet or config doesn't exist
+    YQ_VERSION="v4.40.5"
+    SOPS_VERSION="v3.8.1"
+    log_debug "Using default tool versions - yq: $YQ_VERSION, sops: $SOPS_VERSION"
+  fi
+}
+
 # Setup sudo if needed
 setup_sudo() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -78,42 +101,85 @@ install_tool() {
   # Special cases for tools not in standard repositories
   case "$tool" in
     "yq")
+      local needs_install=false
+      local current_version=""
+      
       if ! check_cmd "yq"; then
-        log_info "Installing yq from GitHub releases..."
-        YQ_VERSION="v4.40.5"
+        needs_install=true
+        log_info "yq not found, will install version $YQ_VERSION"
+      else
+        # Check installed version
+        current_version=$(yq --version 2>&1 | grep -o "v[0-9.]*" | head -1)
+        if [ "$current_version" != "$YQ_VERSION" ]; then
+          log_info "yq version $current_version is installed, but config specifies $YQ_VERSION"
+          read -p "Do you want to upgrade yq to $YQ_VERSION? (y/N) " confirm
+          if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            needs_install=true
+            log_info "Will upgrade yq to $YQ_VERSION"
+          else
+            log_info "Keeping existing yq $current_version"
+            return 0
+          fi
+        else
+          log_success "yq version $YQ_VERSION is already installed"
+          return 0
+        fi
+      fi
+      
+      if [ "$needs_install" = true ]; then
+        log_info "Installing yq $YQ_VERSION from GitHub releases..."
         $SUDO wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
         $SUDO chmod +x /usr/local/bin/yq
         
         if check_cmd "yq"; then
-          log_success "yq installed successfully from GitHub"
+          log_success "yq installed successfully from GitHub (version $YQ_VERSION)"
           return 0
         else
           log_error "Failed to install yq from GitHub"
           return 1
         fi
-      else
-        log_success "yq is already installed"
-        return 0
       fi
       ;;
       
     "sops")
+      local needs_install=false
+      local current_version=""
+      
       if ! check_cmd "sops"; then
-        log_info "Installing sops from GitHub releases..."
-        SOPS_VERSION="v3.8.1"
+        needs_install=true
+        log_info "sops not found, will install version $SOPS_VERSION"
+      else
+        # Check installed version
+        current_version=$(sops --version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)
+        current_version="v$current_version"
+        if [ "$current_version" != "$SOPS_VERSION" ]; then
+          log_info "sops version $current_version is installed, but config specifies $SOPS_VERSION"
+          read -p "Do you want to upgrade sops to $SOPS_VERSION? (y/N) " confirm
+          if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            needs_install=true
+            log_info "Will upgrade sops to $SOPS_VERSION"
+          else
+            log_info "Keeping existing sops $current_version"
+            return 0
+          fi
+        else
+          log_success "sops version $SOPS_VERSION is already installed"
+          return 0
+        fi
+      fi
+      
+      if [ "$needs_install" = true ]; then
+        log_info "Installing sops $SOPS_VERSION from GitHub releases..."
         $SUDO wget -qO /usr/local/bin/sops "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
         $SUDO chmod +x /usr/local/bin/sops
         
         if check_cmd "sops"; then
-          log_success "sops installed successfully from GitHub"
+          log_success "sops installed successfully from GitHub (version $SOPS_VERSION)"
           return 0
         else
           log_error "Failed to install sops from GitHub"
           return 1
         fi
-      else
-        log_success "sops is already installed"
-        return 0
       fi
       ;;
       
@@ -146,6 +212,9 @@ bootstrap() {
   
   # Initial check of tools
   local required_missing=0
+  
+  # Load tool versions from config
+  load_tool_versions
   
   # Check required tools
   for tool in "${REQUIRED_TOOLS[@]}"; do
