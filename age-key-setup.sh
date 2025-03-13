@@ -107,162 +107,11 @@ update_sops_config() {
     log_fatal "yq is required but not installed. Please run the bootstrap.sh script first to install required tools."
   fi
   
-  # Check if SOPS config file exists
+  # File doesn't exist - create it
   if [ ! -f "$SOPS_CONFIG_FILE" ]; then
     log_info "SOPS config file does not exist, will create it"
-  else 
-    log_info "SOPS config file exists, checking for key"
-  fi
-  
-  # Check if this key is already added to avoid duplicates
-  if [ -f "$SOPS_CONFIG_FILE" ]; then
-    log_info "Checking if key exists in config file..."
-    if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
-      log_info "Public key already exists in SOPS config"
-      return 0
-    else
-      log_info "Public key NOT found in config, will add it"
-    fi
     
-    # Debug - show current config content
-    log_debug "Current config file content:"
-    cat "$SOPS_CONFIG_FILE" | while read line; do
-      log_debug "  $line"
-    done
-    
-    log_info "Updating existing SOPS config..."
-    # Create backup of existing config
-    cp "$SOPS_CONFIG_FILE" "$SOPS_CONFIG_FILE.bak"
-    log_info "Backup created at $SOPS_CONFIG_FILE.bak"
-    
-    # Check if there's an existing age key
-    if yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q -v "null"; then
-      # First, check if the key is already in the file regardless of format
-      if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
-        log_info "Public key already exists in SOPS config"
-        return 0
-      fi
-  
-      # Handle different age format types
-      if yq '.creation_rules[0].age | type' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -q "string"; then
-        log_info "Detected block scalar format in config"
-        
-        # Extract existing keys from the block scalar format
-        TEMP_FILE=$(mktemp)
-        TEMP_KEYS=$(mktemp)
-        
-        # Extract existing keys and format
-        yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" > "$TEMP_KEYS" || true
-        
-        # Add our key to the list (appending to maintain existing keys)
-        echo "$PUBLIC_KEY" >> "$TEMP_KEYS"
-        
-        # Get path_regex from existing file or use default
-        path_regex=$(yq '.creation_rules[0].path_regex' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" || echo "config/private.*\.ya?ml$")
-        
-        # Create the new config file preserving the block scalar format
-        {
-          echo "creation_rules:"
-          echo "  - path_regex: $path_regex"
-          echo "    age: >-"
-          
-          # Add all keys maintaining the indentation
-          while IFS= read -r key; do
-            # Skip empty lines
-            if [ -n "$key" ]; then
-              echo "      $key"
-            fi
-          done < "$TEMP_KEYS"
-        } > "$TEMP_FILE"
-        
-        # Debug - show what we're writing
-        log_info "Writing new config with block scalar format:"
-        cat "$TEMP_FILE" | while read debug_line; do
-          log_info "  $debug_line"
-        done
-        
-        # Clean up temp files
-        rm -f "$TEMP_KEYS"
-          
-        # Replace the original file
-        mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
-      else
-        # It's likely an array format - process accordingly
-        if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
-          log_info "Public key already exists in SOPS config (array format)"
-          return 0
-        fi
-        
-        log_info "Adding key to existing config (array format)"
-        
-        TEMP_FILE=$(mktemp)
-        TEMP_KEYS=$(mktemp)
-        
-        # Extract existing keys from the age array
-        yq '.creation_rules[0].age[]' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" > "$TEMP_KEYS" || true
-        
-        # Add our key to the list
-        echo "$PUBLIC_KEY" >> "$TEMP_KEYS"
-        
-        # Sort and remove duplicates
-        sort -u "$TEMP_KEYS" > "$TEMP_KEYS.sorted"
-        
-        # Get path_regex from existing file or use default
-        path_regex=$(yq '.creation_rules[0].path_regex' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" || echo "config/private.*\.ya?ml$")
-        
-        # Create the new config file with all keys
-        {
-          echo "creation_rules:"
-          echo "  - path_regex: $path_regex"
-          echo "    age:"
-          
-          # Add all keys as array elements
-          while IFS= read -r key; do
-            # Skip empty lines
-            if [ -n "$key" ]; then
-              echo "      - \"$key\""
-            fi
-          done < "$TEMP_KEYS.sorted"
-        } > "$TEMP_FILE"
-        
-        # Debug - show what we're writing
-        log_info "Writing new config with the following content:"
-        cat "$TEMP_FILE" | while read debug_line; do
-          log_info "  $debug_line"
-        done
-        
-        # Clean up temp files
-        rm -f "$TEMP_KEYS" "$TEMP_KEYS.sorted"
-        
-        # Replace the original file
-        mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
-      fi
-    else
-      log_info "No age field found, creating it"
-      
-      # No age field yet, create a new SOPS config file
-      TEMP_FILE=$(mktemp)
-      
-      # Simple approach to create a new config from scratch
-      cat > "$TEMP_FILE" << EOF
-creation_rules:
-  - path_regex: config/private.*\.ya?ml$
-    age: >-
-      $PUBLIC_KEY
-EOF
-      
-      # Replace the original file
-      mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
-      
-      log_success "Created new SOPS config with age key"
-    fi
-  else
-    log_info "Creating new SOPS config..."
-    
-    # Make sure the directory exists
-    mkdir -p "$(dirname "$SOPS_CONFIG_FILE")"
-    
-    # Create new config with just the new key - using the original block scalar format
+    # Create new config with just the new key
     cat > "$SOPS_CONFIG_FILE" << EOF
 creation_rules:
   - path_regex: config/private.*\.ya?ml$
@@ -270,13 +119,85 @@ creation_rules:
       $PUBLIC_KEY
 EOF
     
-    # Verify the file was created
-    if [ -f "$SOPS_CONFIG_FILE" ]; then
-      log_success "SOPS config file created successfully"
-    else
-      log_error "Failed to create SOPS config file"
-    fi
+    log_success "SOPS config file created successfully"
+    return 0
   fi
+  
+  # At this point, the file exists - check if our key is already in it
+  if grep -q "$PUBLIC_KEY" "$SOPS_CONFIG_FILE"; then
+    log_info "Public key already exists in SOPS config"
+    return 0
+  fi
+  
+  log_info "Public key NOT found in config, will add it"
+  
+  # Create backup
+  cp "$SOPS_CONFIG_FILE" "$SOPS_CONFIG_FILE.bak"
+  log_info "Backup created at $SOPS_CONFIG_FILE.bak"
+  
+  # Create temp file for the modified content
+  TEMP_FILE=$(mktemp)
+  
+  # Check if it's block scalar format
+  if grep -q "age: >-" "$SOPS_CONFIG_FILE"; then
+    log_info "Detected block scalar format (>-)"
+    
+    # Process the file line by line to maintain structure
+    found_block=0
+    while IFS= read -r line; do
+      echo "$line" >> "$TEMP_FILE"
+      # After the >- marker, add our key
+      if [[ "$line" == *"age: >-"* ]]; then
+        echo "      $PUBLIC_KEY" >> "$TEMP_FILE"
+        found_block=1
+      fi
+    done < "$SOPS_CONFIG_FILE"
+    
+    # If we didn't find the block, something is wrong with the format
+    if [ "$found_block" -eq 0 ]; then
+      log_warn "Could not find the 'age: >-' marker, using fallback approach"
+      # Just append to the file - not ideal but better than nothing
+      echo "    age: >-" >> "$TEMP_FILE"
+      echo "      $PUBLIC_KEY" >> "$TEMP_FILE"
+    fi
+  elif grep -q "age:" "$SOPS_CONFIG_FILE"; then
+    # Assume array format if not block scalar but has age field
+    log_info "Detected array format"
+    
+    # Extract existing keys
+    existing_keys=$(yq '.creation_rules[0].age[]' "$SOPS_CONFIG_FILE" 2>/dev/null | grep -v "null" || echo "")
+    
+    # Create a new config with all keys
+    cat > "$TEMP_FILE" << EOF
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age:
+EOF
+    
+    # Add existing keys
+    if [ -n "$existing_keys" ]; then
+      echo "$existing_keys" | while IFS= read -r key; do
+        if [ -n "$key" ]; then
+          echo "      - \"$key\"" >> "$TEMP_FILE"
+        fi
+      done
+    fi
+    
+    # Add our new key
+    echo "      - \"$PUBLIC_KEY\"" >> "$TEMP_FILE"
+  else
+    log_warn "Unknown format, creating new config file"
+    # Create a new config file with just our key (block scalar format)
+    cat > "$TEMP_FILE" << EOF
+creation_rules:
+  - path_regex: config/private.*\.ya?ml$
+    age: >-
+      $PUBLIC_KEY
+EOF
+  fi
+  
+  # Replace the original with our modified version
+  mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
   
   log_success "SOPS config updated with Age public key"
   log_info "Configuration file: $SOPS_CONFIG_FILE"
