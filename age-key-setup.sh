@@ -43,6 +43,7 @@ generate_key() {
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
       log_info "Using existing key"
       extract_public_key
+      update_sops_config  # Make sure the key is in .sops.yml
       return 0
     fi
     # If user confirmed, we'll continue and generate a new key below
@@ -109,12 +110,23 @@ update_sops_config() {
         # We need to create a temporary file and process it
         TEMP_FILE=$(mktemp)
         
-        # Extract all the age recipients from the file without our new key
-        recipients=$(yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE" | grep -v "$PUBLIC_KEY")
+        # Extract all the age recipients from the file 
+        recipients=$(yq '.creation_rules[0].age' "$SOPS_CONFIG_FILE")
         
-        # Create a new config with all existing recipients plus our new key
-        # Using environment variables directly with eval
-        yq e ".creation_rules[0].age = \"$recipients\n      $PUBLIC_KEY\"" \
+        # Check if the public key is already in the recipients
+        if echo "$recipients" | grep -q "$PUBLIC_KEY"; then
+          log_info "Public key already exists in SOPS config (within multi-line string)"
+          # Clean up temporary file
+          rm -f "$TEMP_FILE"
+          return 0
+        fi
+        
+        # Append the new key to the existing recipients, maintaining format
+        combined_recipients="${recipients}
+      ${PUBLIC_KEY}"
+        
+        # Update the config using yq
+        yq e ".creation_rules[0].age = \"${combined_recipients}\"" \
           "$SOPS_CONFIG_FILE" > "$TEMP_FILE"
           
         # Replace the original file
