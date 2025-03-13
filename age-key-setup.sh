@@ -202,16 +202,38 @@ update_sops_config() {
         # Create a temporary file for processing
         TEMP_FILE=$(mktemp)
         
+        # Initialize array tracking variable
+        in_array=0
+        
+        # Create a backup first
+        cp "$SOPS_CONFIG_FILE" "$TEMP_FILE.backup"
+        
         # Simple text-based approach for adding to array
         {
           # Read the file line by line
           while IFS= read -r line; do
-            # Check for array ending
+            # Debug output to help diagnose issues
+            log_debug "Processing line: $line"
+            
+            # Check for array ending (single-line array)
             if [[ "$line" == *"age:"*"["* && "$line" == *"]"* ]]; then
-              # Single-line array - insert our key before closing bracket
-              line="${line%]*}, \"$PUBLIC_KEY\"]"
-              echo "$line"
-            elif [[ "$line" == *"]"* && "$in_array" == "1" ]]; then
+              # Single-line array 
+              if [[ "$line" == *"]"* ]]; then
+                # Remove the closing bracket and add our key
+                new_line="${line%]*}"
+                # Handle empty array case
+                if [[ "$new_line" == *"["* && "$new_line" != *","* ]]; then
+                  # Empty array or first element
+                  echo "${new_line}\"$PUBLIC_KEY\"]"
+                else
+                  # Array with elements - add comma
+                  echo "${new_line}, \"$PUBLIC_KEY\"]"
+                fi
+              else
+                # No valid transformation, output unchanged
+                echo "$line"
+              fi
+            elif [[ "$line" == *"]"* && "$in_array" -eq 1 ]]; then
               # Multi-line array - insert our key before closing bracket
               echo "      \"$PUBLIC_KEY\","
               echo "$line"
@@ -224,8 +246,14 @@ update_sops_config() {
               # Regular line
               echo "$line"
             fi
-          done < "$SOPS_CONFIG_FILE"
+          done < "$TEMP_FILE.backup"
         } > "$TEMP_FILE"
+        
+        # Debug - show what we're trying to write
+        log_debug "Modified content to be written:"
+        cat "$TEMP_FILE" | while read debug_line; do
+          log_debug "  $debug_line"
+        done
         
         # Replace the original file
         mv "$TEMP_FILE" "$SOPS_CONFIG_FILE"
@@ -255,7 +283,7 @@ EOF
     # Make sure the directory exists
     mkdir -p "$(dirname "$SOPS_CONFIG_FILE")"
     
-    # Create new config with just the new key
+    # Create new config with just the new key - using the original block scalar format
     cat > "$SOPS_CONFIG_FILE" << EOF
 creation_rules:
   - path_regex: config/private.*\.ya?ml$
