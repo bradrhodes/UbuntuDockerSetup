@@ -14,7 +14,7 @@ log_level: "info"
 
 # Tool versions for bootstrap
 tool_versions:
-  yq: "v4.40.5"
+  yq: "v4.45.1"
   sops: "v3.8.1"
 
 # TMUX configuration
