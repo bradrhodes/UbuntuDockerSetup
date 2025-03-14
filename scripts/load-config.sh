@@ -144,6 +144,26 @@ else
   log_debug "Loaded SSH configuration, generate key: $SSH_GENERATE_KEY"
 fi
 
+# GitHub configuration from private config if available
+if yq '.github' "$PRIVATE_CONFIG" | grep -q "null"; then
+  log_debug "No GitHub configuration found in private config"
+else
+  # GitHub credentials
+  export GITHUB_USERNAME=$(yq '.github.username // ""' "$PRIVATE_CONFIG")
+  export GITHUB_ACCESS_TOKEN=$(yq '.github.access_token // ""' "$PRIVATE_CONFIG")
+  export GITHUB_UPLOAD_KEY=$(yq '.github.upload_key // false' "$PRIVATE_CONFIG")
+  
+  if [ "$GITHUB_UPLOAD_KEY" = "true" ]; then
+    log_debug "GitHub SSH key upload enabled"
+  else
+    log_debug "GitHub SSH key upload disabled"
+  fi
+  
+  if [ -n "$GITHUB_USERNAME" ]; then
+    log_debug "GitHub username configured: $GITHUB_USERNAME"
+  fi
+fi
+
 # Docker repo configuration from private config if available
 if yq '.github.docker_repo' "$PRIVATE_CONFIG" | grep -q "null"; then
   log_debug "No docker repository configuration found in private config"

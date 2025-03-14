@@ -47,10 +47,14 @@ setup_docker_repo() {
   # Create parent directory if it doesn't exist
   if [ ! -d "$(dirname "$EXPANDED_REPO_DIR")" ]; then
     log_info "Creating parent directory: $(dirname "$EXPANDED_REPO_DIR")"
-    if ! sudo mkdir -p "$(dirname "$EXPANDED_REPO_DIR")"; then
-      log_error "Failed to create parent directory"
+    
+    # Create directory without sudo 
+    if ! mkdir -p "$(dirname "$EXPANDED_REPO_DIR")"; then
+      log_error "Failed to create parent directory $(dirname "$EXPANDED_REPO_DIR")"
       return 1
     fi
+    
+    log_success "Parent directory created successfully"
   fi
   
   # If the directory already exists, update it
@@ -112,26 +116,33 @@ setup_docker_repo() {
         log_info "Directory is empty, proceeding with clone"
       fi
     else
-      # Create the directory
+      # Create the directory as current user (no sudo)
       log_info "Creating directory $DOCKER_REPO_DIRECTORY"
-      if ! sudo mkdir -p "$EXPANDED_REPO_DIR"; then
+      if ! mkdir -p "$EXPANDED_REPO_DIR"; then
         log_error "Failed to create directory $DOCKER_REPO_DIRECTORY"
         return 1
       fi
     fi
     
-    # Set proper ownership
-    if [ "$(id -u)" -eq 0 ]; then
-      # If running as root, change ownership to SERVER_USER
-      if [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != "root" ]; then
-        log_info "Setting ownership to $SERVER_USER"
-        sudo chown -R "$SERVER_USER:$SERVER_USER" "$EXPANDED_REPO_DIR"
-      fi
+    # We're always creating as the current user, so ownership is correct by default
+    # Just make sure we have proper permissions
+    if [ -d "$EXPANDED_REPO_DIR" ]; then
+      log_info "Ensuring proper directory permissions"
+      chmod -R u+w "$EXPANDED_REPO_DIR" 2>/dev/null || true
     fi
     
-    # Clone the repository
+    # Clone the repository (as current user only)
+    log_info "Running: git clone -b $branch $DOCKER_REPO_URL $EXPANDED_REPO_DIR"
+    
     if ! git clone -b "$branch" "$DOCKER_REPO_URL" "$EXPANDED_REPO_DIR"; then
       log_error "Failed to clone repository"
+      
+      # If it failed, cleanup any partial directory
+      if [ -d "$EXPANDED_REPO_DIR" ] && [ ! -d "$EXPANDED_REPO_DIR/.git" ]; then
+        log_info "Cleaning up partial directory..."
+        rm -rf "$EXPANDED_REPO_DIR"
+      fi
+      
       return 1
     fi
     
