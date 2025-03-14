@@ -41,24 +41,27 @@ setup_docker_repo() {
   log_info "Target directory: $DOCKER_REPO_DIRECTORY"
   log_info "Branch: $branch"
   
+  # Expand any ~ in the path to the home directory
+  EXPANDED_REPO_DIR="${DOCKER_REPO_DIRECTORY/#\~/$HOME}"
+  
   # Create parent directory if it doesn't exist
-  if [ ! -d "$(dirname "$DOCKER_REPO_DIRECTORY")" ]; then
-    log_info "Creating parent directory: $(dirname "$DOCKER_REPO_DIRECTORY")"
-    if ! sudo mkdir -p "$(dirname "$DOCKER_REPO_DIRECTORY")"; then
+  if [ ! -d "$(dirname "$EXPANDED_REPO_DIR")" ]; then
+    log_info "Creating parent directory: $(dirname "$EXPANDED_REPO_DIR")"
+    if ! sudo mkdir -p "$(dirname "$EXPANDED_REPO_DIR")"; then
       log_error "Failed to create parent directory"
       return 1
     fi
   fi
   
   # If the directory already exists, update it
-  if [ -d "$DOCKER_REPO_DIRECTORY/.git" ]; then
+  if [ -d "$EXPANDED_REPO_DIR/.git" ]; then
     log_info "Repository already exists at $DOCKER_REPO_DIRECTORY"
     
     if [ "$auto_update" = "true" ]; then
       log_info "Updating repository..."
       
       # Change to the repository directory
-      cd "$DOCKER_REPO_DIRECTORY" || { 
+      cd "$EXPANDED_REPO_DIR" || { 
         log_error "Failed to change to repository directory"
         return 1
       }
@@ -97,11 +100,11 @@ setup_docker_repo() {
     log_info "Cloning repository to $DOCKER_REPO_DIRECTORY..."
     
     # If directory exists but is not a git repo, we need to handle this
-    if [ -d "$DOCKER_REPO_DIRECTORY" ]; then
+    if [ -d "$EXPANDED_REPO_DIR" ]; then
       log_warn "Directory exists but is not a git repository"
       log_info "Checking if directory is empty..."
       
-      if [ "$(ls -A "$DOCKER_REPO_DIRECTORY")" ]; then
+      if [ "$(ls -A "$EXPANDED_REPO_DIR")" ]; then
         log_error "Directory is not empty. Cannot clone repository."
         log_info "Please move or remove the contents of $DOCKER_REPO_DIRECTORY and try again."
         return 1
@@ -111,7 +114,7 @@ setup_docker_repo() {
     else
       # Create the directory
       log_info "Creating directory $DOCKER_REPO_DIRECTORY"
-      if ! sudo mkdir -p "$DOCKER_REPO_DIRECTORY"; then
+      if ! sudo mkdir -p "$EXPANDED_REPO_DIR"; then
         log_error "Failed to create directory $DOCKER_REPO_DIRECTORY"
         return 1
       fi
@@ -122,12 +125,12 @@ setup_docker_repo() {
       # If running as root, change ownership to SERVER_USER
       if [ -n "${SERVER_USER:-}" ] && [ "$SERVER_USER" != "root" ]; then
         log_info "Setting ownership to $SERVER_USER"
-        sudo chown -R "$SERVER_USER:$SERVER_USER" "$DOCKER_REPO_DIRECTORY"
+        sudo chown -R "$SERVER_USER:$SERVER_USER" "$EXPANDED_REPO_DIR"
       fi
     fi
     
     # Clone the repository
-    if ! git clone -b "$branch" "$DOCKER_REPO_URL" "$DOCKER_REPO_DIRECTORY"; then
+    if ! git clone -b "$branch" "$DOCKER_REPO_URL" "$EXPANDED_REPO_DIR"; then
       log_error "Failed to clone repository"
       return 1
     fi
